@@ -174,6 +174,42 @@ func newServeCommand() *serveCommand {
 	return result
 }
 
+func newServer(listen, frontend, system, rom string) *http.Server {
+	handler := http.NewServeMux()
+	proxyURL, _ := url.Parse(retroarchHost)
+	if frontend == "" {
+		handler.Handle("/frontend/", newReverseProxy(proxyURL))
+	} else {
+		handler.Handle("/frontend/", http.FileServer(&fileSystem{
+			Indexed: false,
+			SubDirs: false,
+			Root:    "/frontend/",
+			Source:  http.Dir(frontend),
+		}))
+	}
+	if system == "" {
+		handler.Handle("/system/", newReverseProxy(proxyURL))
+	} else {
+		handler.Handle("/system/", http.FileServer(&fileSystem{
+			Indexed: true,
+			SubDirs: false,
+			Root:    "/system/",
+			Source:  http.Dir(system),
+		}))
+	}
+	if rom == "" {
+		handler.Handle("/cores/", newReverseProxy(proxyURL))
+	} else {
+		handler.Handle("/cores/", http.FileServer(&fileSystem{
+			Indexed: true,
+			SubDirs: true,
+			Root:    "/cores/",
+			Source:  http.Dir(rom),
+		}))
+	}
+	return &http.Server{Addr: listen, Handler: handler}
+}
+
 func (cmd *serveCommand) Name() string {
 	return "serve"
 }
@@ -194,37 +230,11 @@ func (cmd *serveCommand) Run(args []string) error {
 		cmd.cli.Usage()
 		os.Exit(1)
 	}
-	proxyURL, _ := url.Parse(retroarchHost)
-	if cmd.frontend == "" {
-		http.Handle("/frontend/", newReverseProxy(proxyURL))
-	} else {
-		http.Handle("/frontend/", http.FileServer(&fileSystem{
-			Indexed: false,
-			SubDirs: false,
-			Root:    "/frontend/",
-			Source:  http.Dir(cmd.frontend),
-		}))
-	}
-	if cmd.system == "" {
-		http.Handle("/system/", newReverseProxy(proxyURL))
-	} else {
-		http.Handle("/system/", http.FileServer(&fileSystem{
-			Indexed: true,
-			SubDirs: false,
-			Root:    "/system/",
-			Source:  http.Dir(cmd.system),
-		}))
-	}
-	if cmd.rom == "" {
-		http.Handle("/cores/", newReverseProxy(proxyURL))
-	} else {
-		http.Handle("/cores/", http.FileServer(&fileSystem{
-			Indexed: true,
-			SubDirs: true,
-			Root:    "/cores/",
-			Source:  http.Dir(cmd.rom),
-		}))
-	}
+	server := newServer(cmd.listen, cmd.frontend, cmd.system, cmd.rom)
 	fmt.Println("Listening on", cmd.listen)
-	return http.ListenAndServe(cmd.listen, nil)
+	err := server.ListenAndServe()
+	if err == http.ErrServerClosed {
+		return nil
+	}
+	return err
 }

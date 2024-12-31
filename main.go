@@ -80,6 +80,8 @@ func usage(w io.Writer, name string) {
 }
 
 func main() {
+	registerExtraCommands()
+
 	var defaultCommand command = nil
 	var cmd command = nil
 	var optIndex uint = 1
