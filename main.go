@@ -21,191 +21,109 @@
 package main
 
 import (
-	"flag"
 	"fmt"
-	"io/fs"
-	"net"
-	"net/http"
-	"net/http/httputil"
-	"net/url"
+	"io"
 	"os"
-	"path"
-	"strings"
-	"time"
+	"path/filepath"
 )
 
-const (
-	retroarchHost string = "http://buildbot.libretro.com/assets/"
-	defaultListen string = ":5164"
-)
+const version string = "1.1"
 
-func newReverseProxy(target *url.URL) *httputil.ReverseProxy {
-	proxy := httputil.NewSingleHostReverseProxy(target)
-	director := proxy.Director
-	proxy.Director = func(req *http.Request) {
-		director(req)
-		req.Host = target.Host
+func help(args []string) error {
+	if len(args) == 0 {
+		usage(os.Stdout, filepath.Base(os.Args[0]))
+		os.Exit(0)
+	} else {
+		for _, cmd := range commands {
+			if cmd.Name() == args[0] {
+				fmt.Println(cmd.Desc())
+				cmd.PrintUsage()
+				os.Exit(0)
+			}
+		}
 	}
-	return proxy
+	return fmt.Errorf("Unknown command %s", args[0])
 }
 
-type inMemoryFile struct {
-	*strings.Reader
-	name string
+type command interface {
+	Name() string
+	Desc() string
+	PrintUsage()
+	Run([]string) error
 }
 
-func (f inMemoryFile) Close() error {
+type versionCommand struct{}
+
+func (cmd versionCommand) Name() string {
+	return "version"
+}
+
+func (cmd versionCommand) Desc() string {
+	return "Print the application version."
+}
+
+func (cmd versionCommand) PrintUsage() {}
+
+func (cmd versionCommand) Run(args []string) error {
+	fmt.Println(filepath.Base(os.Args[0]), "version", version)
 	return nil
 }
 
-func (f inMemoryFile) Readdir(count int) ([]fs.FileInfo, error) {
-	return []fs.FileInfo{}, nil
-}
+var commands []command = []command{versionCommand{}, newServeCommand()}
 
-func (f inMemoryFile) Name() string {
-	return f.name
-}
-
-func (f inMemoryFile) Mode() fs.FileMode {
-	return 0444
-}
-
-func (f inMemoryFile) ModTime() time.Time {
-	return time.Now()
-}
-
-func (f inMemoryFile) IsDir() bool {
-	return false
-}
-
-func (f inMemoryFile) Sys() any {
-	return nil
-}
-
-func (f inMemoryFile) Stat() (fs.FileInfo, error) {
-	return f, nil
-}
-
-type fileSystem struct {
-	Indexed bool
-	SubDirs bool
-	Root    string
-	Source  http.Dir
-}
-
-func (filesystem *fileSystem) Open(name string) (http.File, error) {
-	name = name[len(filesystem.Root)-1:]
-	if filesystem.Indexed {
-		if filesystem.SubDirs {
-			if name == "/.index-dirs" {
-				root, err := filesystem.Source.Open(".")
-				if err != nil {
-					return nil, err
-				}
-				files, err := root.Readdir(0)
-				if err != nil {
-					return nil, err
-				}
-				result := strings.Builder{}
-				for _, info := range files {
-					if info.Mode().Type() == fs.ModeSymlink {
-						info, err = os.Stat(path.Join(string(filesystem.Source), info.Name()))
-						if err != nil {
-							return nil, err
-						}
-					}
-					if info.IsDir() {
-						fmt.Fprintln(&result, info.Name())
-					}
-				}
-				return inMemoryFile{strings.NewReader(result.String()), ".index-dirs"}, nil
-			}
-		}
-		dir, base := path.Split(name)
-		if base == ".index" {
-			d, err := filesystem.Source.Open(dir)
-			if err != nil {
-				return nil, err
-			}
-			files, err := d.Readdir(0)
-			if err != nil {
-				return nil, err
-			}
-			result := strings.Builder{}
-			for _, info := range files {
-				if info.Mode().Type() == fs.ModeSymlink {
-					info, err = os.Stat(path.Join(string(filesystem.Source), dir, info.Name()))
-					if err != nil {
-						return nil, err
-					}
-				}
-				if info.Mode().IsRegular() {
-					fmt.Fprintln(&result, info.Name())
-				}
-			}
-			return inMemoryFile{strings.NewReader(result.String()), ".index"}, nil
-		}
+func usage(w io.Writer, name string) {
+	fmt.Fprintf(w, "Usage: %s COMMAND [OPTIONS...]\nAvailable commands:\n", name)
+	fmt.Fprintln(w, "  help: print this help or the provided command help")
+	for _, cmd := range commands {
+		fmt.Fprintf(w, "  %s: %s\n", cmd.Name(), cmd.Desc())
 	}
-	return filesystem.Source.Open(name)
 }
 
 func main() {
-	var endPoint *net.TCPAddr = nil
-	version := flag.Bool("version", false, "Print retroarch-asset-server version then exit")
-	frontendPath := flag.String("frontend", "", "path of the directory where frontend is stored (optional)")
-	romPath := flag.String("rom", "", "path of the directory where ROMs are stored (optional)")
-	systemPath := flag.String("system", "", "path of the directory where systems are stored (optional)")
-	flag.Func("listen", "Server listening address (default: "+defaultListen+")", func(s string) error {
-		var err error
-		endPoint, err = net.ResolveTCPAddr("tcp", s)
-		return err
-	})
-	flag.Parse()
-	if flag.NArg() > 0 {
-		fmt.Fprintln(os.Stderr, "Unknown argument", flag.Arg(0))
-		flag.Usage()
+	var defaultCommand command = nil
+	var cmd command = nil
+	var optIndex uint = 1
+	if len(os.Args) < 2 {
+		for _, c := range commands {
+			if c.Name() == "serve" {
+				defaultCommand = c
+				break
+			}
+		}
+	} else if os.Args[1] == "help" {
+		err := help(os.Args[2:])
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
+	} else {
+		for _, c := range commands {
+			if c.Name() == "serve" {
+				defaultCommand = c
+			}
+			if c.Name() == os.Args[1] {
+				cmd = c
+				optIndex = 2
+				break
+			}
+		}
+	}
+	if cmd != nil {
+		err := cmd.Run(os.Args[optIndex:])
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(2)
+		}
+	} else if defaultCommand != nil {
+		err := defaultCommand.Run(os.Args[optIndex:])
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(2)
+		}
+	} else {
+		fmt.Fprintln(os.Stderr, "Unknown command", os.Args[1])
+		usage(os.Stderr, filepath.Base(os.Args[0]))
 		os.Exit(1)
 	}
-	if *version {
-		fmt.Println("retroarch-asset-server 1.0")
-		return
-	}
-
-	if endPoint == nil {
-		endPoint, _ = net.ResolveTCPAddr("tcp", defaultListen)
-	}
-
-	proxyURL, _ := url.Parse(retroarchHost)
-	if *frontendPath == "" {
-		http.Handle("/frontend/", newReverseProxy(proxyURL))
-	} else {
-		http.Handle("/frontend/", http.FileServer(&fileSystem{
-			Indexed: false,
-			SubDirs: false,
-			Root:    "/frontend/",
-			Source:  http.Dir(*frontendPath),
-		}))
-	}
-	if *systemPath == "" {
-		http.Handle("/system/", newReverseProxy(proxyURL))
-	} else {
-		http.Handle("/system/", http.FileServer(&fileSystem{
-			Indexed: true,
-			SubDirs: false,
-			Root:    "/system/",
-			Source:  http.Dir(*systemPath),
-		}))
-	}
-	if *romPath == "" {
-		http.Handle("/cores/", newReverseProxy(proxyURL))
-	} else {
-		http.Handle("/cores/", http.FileServer(&fileSystem{
-			Indexed: true,
-			SubDirs: true,
-			Root:    "/cores/",
-			Source:  http.Dir(*romPath),
-		}))
-	}
-	fmt.Println("Listening on", endPoint.String())
-	http.ListenAndServe(endPoint.String(), nil)
 }
