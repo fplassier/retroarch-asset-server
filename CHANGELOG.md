@@ -8,6 +8,7 @@
 * BREAKING
   * Command line interface refactoring
 * MISC
+  * Add Windows service management
 
 ## [1.0](https://github.com/fplassier/retroarch-asset-server/releases/tag/v1.0) - 2024-12-29
 
