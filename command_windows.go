@@ -53,6 +53,12 @@ func (ws *windowsService) Execute(args []string, r <-chan svc.ChangeRequest, s c
 		s <- svc.Status{State: svc.Stopped}
 		return true, 1
 	}
+	err = argsHelper.cli.Parse(args[1:])
+	if err != nil {
+		ws.elog.Error(1, fmt.Sprintf("Invalid options: %s", err.Error()))
+		s <- svc.Status{State: svc.Stopped}
+		return true, 1
+	}
 	if argsHelper.listen == "" {
 		argsHelper.listen = defaultListen
 	}
