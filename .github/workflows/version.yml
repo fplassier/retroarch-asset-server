@@ -1,0 +1,31 @@
+
+name: Version workflow
+run-name: Version ${{ github.ref_name }}
+
+on:
+  push:
+    tags:
+      - "v*.*"
+      - "!v*.*-rc*"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version-file: 'go.mod'
+    - name: Build for Linux
+      run: go build -o retroarch-asset-server-${{ github.ref_name }}-linux-amd64
+    - name: Build for Windows
+      run: GOOS=windows go build -o retroarch-asset-server-${{ github.ref_name }}-windows-amd64.exe
+    - name: Upload artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: retroarch-asset-server-${{ github.ref_name }}
+        path: |
+          retroarch-asset-server-${{ github.ref_name }}-linux-amd64
+          retroarch-asset-server-${{ github.ref_name }}-windows-amd64.exe
