@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.1.1](https://github.com/fplassier/retroarch-asset-server/releases/tag/v1.1.1) - 2025-01-05
+* SECURITY
+* PERFORMANCE
+* BUGFIXES
+  * Github workflow warning
+  * go.mod module name
+* BREAKING
+* MISC
+  * Build static binary for Linux in version workflows
+
 ## [1.1](https://github.com/fplassier/retroarch-asset-server/releases/tag/v1.1) - 2025-01-05
 
 * SECURITY
