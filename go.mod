@@ -1,4 +1,4 @@
-module retroarch-asset-server
+module github.com/fplassier/retroarch-asset-server
 
 go 1.19
 

@@ -27,7 +27,7 @@ import (
 	"path/filepath"
 )
 
-const version string = "1.1"
+const version string = "1.1.1"
 
 func help(args []string) error {
 	if len(args) == 0 {

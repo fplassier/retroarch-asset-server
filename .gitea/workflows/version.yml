@@ -18,7 +18,7 @@ jobs:
       with:
         go-version-file: 'go.mod'
     - name: Build for Linux
-      run: go build -o retroarch-asset-server-${{ gitea.ref_name }}-linux-amd64
+      run: go build -tags netgo -o retroarch-asset-server-${{ gitea.ref_name }}-linux-amd64
     - name: Build for Windows
       run: GOOS=windows go build -o retroarch-asset-server-${{ gitea.ref_name }}-windows-amd64.exe
     - name: Upload artifact
